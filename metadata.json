@@ -1,0 +1,6 @@
+{
+  "name": "NewsHub – AI-Powered News & Blog Platform",
+  "description": "A full-stack modern news and blogging platform featuring AI-generated summaries with Gemini, category filtering, search, bookmarking, comments, user profiles, and a robust admin dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
