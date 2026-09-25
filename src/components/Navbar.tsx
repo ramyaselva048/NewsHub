@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   Moon,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { api } from '../services/api';
 
 interface NavbarProps {
   currentView: string;
@@ -27,14 +28,29 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onOpenS
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
-  const categories = [
+  const [categories, setCategories] = useState<{ name: string; slug: string }[]>([
     { name: 'Technology', slug: 'technology' },
     { name: 'Business', slug: 'business' },
     { name: 'Science', slug: 'science' },
     { name: 'Sports', slug: 'sports' },
     { name: 'Education', slug: 'education' },
     { name: 'Entertainment', slug: 'entertainment' },
-  ];
+    { name: 'Environment', slug: 'environment' },
+  ]);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.getCategories()
+      .then(cats => {
+        if (isMounted && cats && cats.length > 0) {
+          setCategories(cats.map(c => ({ name: c.name, slug: c.slug })));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [currentView]);
 
   const handleNav = (view: string, param?: string) => {
     onNavigate(view, param);
@@ -66,10 +82,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onOpenS
             </button>
 
             {/* Desktop Navigation Links */}
-            <nav className="hidden xl:flex items-center gap-1">
+            <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 max-w-xl xl:max-w-3xl overflow-x-auto scrollbar-none py-1">
               <button
                 onClick={() => handleNav('home')}
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                className={`px-2.5 xl:px-3 py-2 rounded-xl text-xs font-bold transition-colors shrink-0 cursor-pointer ${
                   currentView === 'home'
                     ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/50'
                     : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-800/60'
@@ -81,7 +97,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onOpenS
                 <button
                   key={cat.slug}
                   onClick={() => handleNav('category', cat.slug)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                  className={`px-2.5 xl:px-3 py-2 rounded-xl text-xs font-bold transition-colors shrink-0 cursor-pointer ${
                     currentView === 'category' && (window as any)._activeCategorySlug === cat.slug
                       ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/50'
                       : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-800/60'

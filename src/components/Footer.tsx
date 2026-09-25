@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Compass, Mail, CheckCircle2, ArrowRight, Shield, Globe } from 'lucide-react';
 import { useToast } from './Toast';
+import { api } from '../services/api';
 
 interface FooterProps {
   onCategoryClick: (slug: string) => void;
@@ -11,6 +12,29 @@ export const Footer: React.FC<FooterProps> = ({ onCategoryClick, onNavigate }) =
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
   const { showToast } = useToast();
+  const [categories, setCategories] = useState<{ name: string; slug: string }[]>([
+    { name: 'Technology', slug: 'technology' },
+    { name: 'Business', slug: 'business' },
+    { name: 'Science', slug: 'science' },
+    { name: 'Sports', slug: 'sports' },
+    { name: 'Education', slug: 'education' },
+    { name: 'Entertainment', slug: 'entertainment' },
+    { name: 'Environment', slug: 'environment' },
+  ]);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.getCategories()
+      .then(cats => {
+        if (isMounted && cats && cats.length > 0) {
+          setCategories(cats.map(c => ({ name: c.name, slug: c.slug })));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,13 +86,13 @@ export const Footer: React.FC<FooterProps> = ({ onCategoryClick, onNavigate }) =
               Categories
             </h4>
             <ul className="space-y-2.5 text-sm">
-              {['Technology', 'Business', 'Science', 'Sports', 'Education', 'Entertainment'].map(cat => (
-                <li key={cat}>
+              {categories.map(cat => (
+                <li key={cat.slug}>
                   <button
-                    onClick={() => onCategoryClick(cat.toLowerCase())}
+                    onClick={() => onCategoryClick(cat.slug)}
                     className="hover:text-indigo-400 transition-colors text-gray-400 hover:translate-x-1 transform inline-block cursor-pointer"
                   >
-                    {cat}
+                    {cat.name}
                   </button>
                 </li>
               ))}

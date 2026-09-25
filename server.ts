@@ -10,7 +10,7 @@ import pg from 'pg';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const { Pool } = pg;
 
@@ -20,39 +20,43 @@ const __dirname = path.dirname(__filename);
 const JWT_SECRET = process.env.JWT_SECRET_KEY || 'newshub_super_secret_jwt_key_2026';
 const PORT = 3000;
 
-// Neon PostgreSQL Connection Pool
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_XErCUDJ17tAn@ep-square-mouse-b3yc1d5v-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require';
+// PostgreSQL Connection Pool (Connected to Neon DB)
+const NEON_DEFAULT_URL = 'postgresql://neondb_owner:npg_XErCUDJ17tAn@ep-square-mouse-b3yc1d5v-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+const rawDbUrl = process.env.DATABASE_URL;
+const DATABASE_URL = (rawDbUrl && !rawDbUrl.includes('localhost:5432') && !rawDbUrl.includes('user:password@localhost'))
+  ? rawDbUrl
+  : NEON_DEFAULT_URL;
 
 let pgPool: pg.Pool | null = null;
 if (DATABASE_URL) {
   try {
     pgPool = new Pool({
       connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
       max: 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
+      connectionTimeoutMillis: 15000,
     });
     pgPool.on('error', (err) => {
-      console.error('[PostgreSQL] Unexpected error on idle client:', err);
+      console.warn('[PostgreSQL] Pool warning:', err.message);
     });
-    console.log('[PostgreSQL] Database pool initialized.');
+    console.log('[PostgreSQL] Neon Database pool configured.');
   } catch (err) {
-    console.error('[PostgreSQL] Failed to initialize pool:', err);
+    console.warn('[PostgreSQL] Could not initialize pool, using local store:', err);
+    pgPool = null;
   }
 }
 
 // Gemini API Client
 let geminiClient: GoogleGenAI | null = null;
 if (process.env.GEMINI_API_KEY) {
-  geminiClient = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
+  try {
+    geminiClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+    });
+  } catch (err) {
+    console.warn('[Gemini] Client initialization warning:', err);
+  }
 }
 
 // Data directory & storage file
@@ -598,11 +602,11 @@ class DB {
 
   public async initPostgres() {
     if (!pgPool) {
-      console.warn('[PostgreSQL] No pool configured, running in local-file mode.');
+      console.log('[DB] Running with local JSON database store.');
       return;
     }
     try {
-      console.log('[PostgreSQL] Connecting to Neon serverless database...');
+      console.log('[PostgreSQL] Connecting to configured database...');
       const client = await pgPool.connect();
       try {
         await client.query(`
@@ -824,12 +828,24 @@ class DB {
         }
         await client.query(`SELECT setval('articles_id_seq', (SELECT COALESCE(MAX(id), 1) FROM articles));`);
 
-        await client.query('DELETE FROM comments');
         for (const c of this.data.comments) {
           await client.query(`
             INSERT INTO comments (id, article_id, user_id, user_name, user_image, comment, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7);
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (id) DO UPDATE SET
+              article_id = EXCLUDED.article_id,
+              user_id = EXCLUDED.user_id,
+              user_name = EXCLUDED.user_name,
+              user_image = EXCLUDED.user_image,
+              comment = EXCLUDED.comment,
+              created_at = EXCLUDED.created_at;
           `, [c.id, c.article_id, c.user_id, c.user_name, c.user_image, c.comment, c.created_at]);
+        }
+        if (this.data.comments.length > 0) {
+          const validCommentIds = this.data.comments.map(c => c.id).join(',');
+          await client.query(`DELETE FROM comments WHERE id NOT IN (${validCommentIds})`);
+        } else {
+          await client.query('DELETE FROM comments');
         }
         await client.query(`SELECT setval('comments_id_seq', (SELECT COALESCE(MAX(id), 1) FROM comments));`);
 
@@ -868,12 +884,16 @@ class DB {
     }
   }
 
-  public async save(): Promise<void> {
+  public saveDiskOnly(): void {
     try {
       fs.writeFileSync(DB_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
     } catch (err) {
       console.error('Failed saving DB file cache', err);
     }
+  }
+
+  public async save(): Promise<void> {
+    this.saveDiskOnly();
     if (pgPool) {
       // Serialize database write operations using a promise queue to guarantee consistency
       this.syncQueue = this.syncQueue
@@ -1483,7 +1503,12 @@ async function startServer() {
 
     // Increment views
     article.views += 1;
-    db.save();
+    if (pgPool) {
+      pgPool.query('UPDATE articles SET views = views + 1 WHERE id = $1', [article.id]).catch(err => {
+        console.warn('[PostgreSQL] Could not update views:', err.message);
+      });
+    }
+    db.saveDiskOnly();
 
     const category = db.categories.find(c => c.id === article.category_id);
     const likeCount = db.likes.filter(l => l.article_id === article.id).length;

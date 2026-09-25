@@ -58,8 +58,11 @@ export const HomePage: React.FC<HomePageProps> = ({ onSelectArticle, onSelectCat
     fetchArticles();
   }, [selectedCategory, page]);
 
-  const featuredArticle = articles.find(a => a.is_featured) || articles[0];
-  const gridArticles = articles.filter(a => a.id !== featuredArticle?.id);
+  const isAllCategory = selectedCategory === 'all' && page === 1;
+  const featuredArticle = isAllCategory ? (articles.find(a => a.is_featured) || articles[0]) : null;
+  const gridArticles = isAllCategory && featuredArticle
+    ? articles.filter(a => a.id !== featuredArticle.id)
+    : articles;
 
   return (
     <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950/50 transition-colors">
