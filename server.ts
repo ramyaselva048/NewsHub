@@ -18,7 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET_KEY || 'newshub_super_secret_jwt_key_2026';
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // PostgreSQL Connection Pool (Connected to Neon DB)
 const NEON_DEFAULT_URL = 'postgresql://neondb_owner:npg_XErCUDJ17tAn@ep-square-mouse-b3yc1d5v-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
